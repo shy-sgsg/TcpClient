@@ -12,11 +12,16 @@
 const int MAX_RETRIES = 5;
 const int RETRY_DELAY_MS = 2000;
 
+QString ipAddress = "127.0.0.1";
+quint16 port = 65432;
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    ui->ipAddressLineEdit->setPlaceholderText("请输入 IP 地址");
+    ui->portLineEdit->setPlaceholderText("请输入端口号");
 
     // 连接 LogManager 的信号到 MainWindow 的槽函数
     connect(&LogManager::instance(), &LogManager::logMessage, this, &MainWindow::onLogMessage);
@@ -47,6 +52,16 @@ MainWindow::~MainWindow()
 // “开始监控”按钮的槽函数
 void MainWindow::on_pushButton_clicked()
 {
+    // 获取用户输入的IP地址和端口号
+    ipAddress = ui->ipAddressLineEdit->text();
+    port = ui->portLineEdit->text().toUShort();
+
+    // 检查IP地址和端口号是否有效
+    if (ipAddress.isEmpty() || port == 0) {
+        qDebug() << "请正确填写IP地址与端口号！";
+        return;
+    }
+
     QString folderPath = "E:/AIR/小长ISAR/实时数据回传/data";
     // 检查路径是否已在监控列表中，以防止重复添加
     if (!myFileSystemWatcher->directories().contains(folderPath)) {
@@ -265,7 +280,7 @@ void MainWindow::startFileTransfer()
     });
 
     // 修正：确保客户端连接的端口与服务器监听的端口一致
-    socket->connectToHost(QHostAddress("127.0.0.1"), 65432);
+    socket->connectToHost(ipAddress, port);
 }
 
 // 接收日志消息的槽函数

@@ -1,3 +1,11 @@
+<!--
+ * @Author: shysgsg 1054733568@qq.com
+ * @Date: 2025-08-14 09:44:29
+ * @LastEditors: shysgsg 1054733568@qq.com
+ * @LastEditTime: 2025-08-14 09:48:33
+ * @FilePath: \Qt_projects\TcpClient\README.md
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+-->
 # TcpClient
 
 一个基于Qt框架的TCP客户端应用，用于监控指定目录下的文件变化并自动将新文件通过TCP协议发送到服务器。
