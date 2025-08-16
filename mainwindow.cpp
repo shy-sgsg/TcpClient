@@ -6,11 +6,14 @@
 #include <QDir>
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QFileDialog>
+#include <QTimer>
 #include "logmanager.h"
 
 // 定义重试常量
 const int MAX_RETRIES = 5;
 const int RETRY_DELAY_MS = 2000;
+QString folderPath = "E:/AIR/小长ISAR/实时数据回传/data";
 
 QString ipAddress = "127.0.0.1";
 quint16 port = 65432;
@@ -22,31 +25,91 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     ui->ipAddressLineEdit->setPlaceholderText("请输入 IP 地址");
     ui->portLineEdit->setPlaceholderText("请输入端口号");
+    ui->pathLineEdit->setPlaceholderText("请输入监控文件夹路径"); // ✅ 设置路径编辑框占位符
+    ui->pathLineEdit->setText(folderPath); // ✅ 将硬编码路径设为默认值
 
-    // 连接 LogManager 的信号到 MainWindow 的槽函数
     connect(&LogManager::instance(), &LogManager::logMessage, this, &MainWindow::onLogMessage);
 
-    // 实例化 QFileSystemWatcher 对象
     myFileSystemWatcher = new QFileSystemWatcher(this);
-
-    // 连接 QFileSystemWatcher 的信号到自定义的槽函数
     connect(myFileSystemWatcher, &QFileSystemWatcher::directoryChanged, this, &MainWindow::onDirectoryChanged);
 
-    // 确保UI中的标签已初始化，初始值为0
     updateStatistics();
 
-    // 注册 qint64 类型，以便在信号和槽中使用
     qRegisterMetaType<qint64>("qint64");
 
-    // 显式连接按钮的点击事件到槽函数，并使用 UniqueConnection 确保只连接一次
-    // 请确保UI文件中按钮的objectName分别为"pushButton"和"stopButton"
-    connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::on_pushButton_clicked, Qt::UniqueConnection);
-    connect(ui->stopButton, &QPushButton::clicked, this, &MainWindow::on_stopButton_clicked, Qt::UniqueConnection);
+    // 已经自动连接了，所以不需要手动连接
+    // connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::on_pushButton_clicked, Qt::UniqueConnection);
+    // connect(ui->stopButton, &QPushButton::clicked, this, &MainWindow::on_stopButton_clicked, Qt::UniqueConnection);
+    // connect(ui->browseButton, &QPushButton::clicked, this, &MainWindow::on_browseButton_clicked);
+
+    // 实例化用于发送消息的 socket
+    m_messageSocket = new QTcpSocket(this);
+    // 连接消息 socket 的信号到处理函数
+    connect(m_messageSocket, &QTcpSocket::connected, this, &MainWindow::onSocketConnected);
+    connect(m_messageSocket, &QTcpSocket::disconnected, this, &MainWindow::onSocketDisconnected);
+    connect(m_messageSocket, &QTcpSocket::readyRead, this, &MainWindow::onSocketReadyRead);
+    connect(m_messageSocket, QOverload<QAbstractSocket::SocketError>::of(&QTcpSocket::errorOccurred), this, &MainWindow::onSocketError);
 }
 
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+// 新增：发送消息按钮的槽函数
+void MainWindow::on_sendMessageButton_clicked()
+{
+    QString message = ui->messageLineEdit->text().trimmed(); // 获取并清理消息
+    if (!message.isEmpty()) {
+        // 如果 socket 未连接，则尝试连接
+        if (m_messageSocket->state() == QAbstractSocket::UnconnectedState) {
+            m_messageSocket->connectToHost(ipAddress, port);
+            m_messageSocket->waitForConnected(3000); // 等待连接建立，超时3秒
+        }
+
+        // 确保连接成功后再发送消息
+        if (m_messageSocket->state() == QAbstractSocket::ConnectedState) {
+            handleMessageTransfer(message);
+            ui->messageLineEdit->clear(); // 发送后清空输入框
+        } else {
+            QMessageBox::warning(this, "警告", "无法连接到服务器，请检查IP和端口。");
+            qDebug() << "无法连接到服务器：" << m_messageSocket->errorString();
+        }
+    }
+}
+
+// 新增：处理消息传输的函数
+void MainWindow::handleMessageTransfer(const QString& message)
+{
+    QByteArray data = message.toUtf8();
+    // 可以在消息前添加一个特定的标识符，以区分消息和文件
+    QByteArray messageHeader = "MSG:";
+    m_messageSocket->write(messageHeader + data);
+    qDebug() << "发送消息到服务器：" << message;
+}
+
+// 新增：处理消息 socket 的信号槽函数
+void MainWindow::onSocketConnected()
+{
+    qDebug() << "消息 Socket 已连接到服务器。";
+}
+
+void MainWindow::onSocketDisconnected()
+{
+    qDebug() << "消息 Socket 已从服务器断开。";
+}
+
+void MainWindow::onSocketReadyRead()
+{
+    // 读取服务器响应
+    QByteArray response = m_messageSocket->readAll();
+    qDebug() << "收到服务器消息响应：" << QString(response);
+}
+
+void MainWindow::onSocketError(QAbstractSocket::SocketError socketError)
+{
+    Q_UNUSED(socketError);
+    qDebug() << "消息 Socket 发生错误：" << m_messageSocket->errorString();
 }
 
 // “开始监控”按钮的槽函数
@@ -62,7 +125,8 @@ void MainWindow::on_pushButton_clicked()
         return;
     }
 
-    QString folderPath = "E:/AIR/小长ISAR/实时数据回传/data";
+    folderPath = ui->pathLineEdit->text();
+
     // 检查路径是否已在监控列表中，以防止重复添加
     if (!myFileSystemWatcher->directories().contains(folderPath)) {
         if (QDir(folderPath).exists()) {
@@ -71,9 +135,10 @@ void MainWindow::on_pushButton_clicked()
         } else {
             qDebug() << "错误：指定的监控路径不存在：" << folderPath;
             QMessageBox::warning(this, "警告", "指定的监控文件夹不存在。");
+            return; // ✅ 如果路径不存在，则直接返回
         }
     } else {
-        return; // 如果路径已在监控中，则立即返回，不再执行后续代码
+        return;
     }
 
     // 扫描一次文件夹，检查并发送所有新文件
@@ -104,6 +169,15 @@ void MainWindow::on_stopButton_clicked()
 
     qDebug() << "停止监控文件夹...";
     myFileSystemWatcher->removePaths(myFileSystemWatcher->directories());
+}
+
+// ✅ 新增：浏览按钮的槽函数
+void MainWindow::on_browseButton_clicked()
+{
+    QString selectedDir = QFileDialog::getExistingDirectory(this, "选择监控文件夹", ui->pathLineEdit->text());
+    if (!selectedDir.isEmpty()) {
+        ui->pathLineEdit->setText(selectedDir);
+    }
 }
 
 // 处理文件夹内容变化的槽函数

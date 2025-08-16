@@ -32,6 +32,14 @@ private slots:
     void startFileTransfer(); // 修正: 不再接受参数，从队列中取文件
     void onLogMessage(const QString &message);
     void updateStatistics();
+    void on_browseButton_clicked();
+    void on_sendMessageButton_clicked();
+    void handleMessageTransfer(const QString& message);
+    void onSocketConnected();
+    void onSocketDisconnected();
+    void onSocketReadyRead();
+    void onSocketError(QAbstractSocket::SocketError socketError);
+    // void onBytesWritten(qint64 bytes);
 
 private:
     // 文件状态枚举
@@ -57,5 +65,7 @@ private:
     QElapsedTimer m_speedTimer;
     qint64 m_bytesWrittenTotal = 0;
     qint64 m_fileSize = 0;
+
+    QTcpSocket *m_messageSocket;
 };
 #endif // MAINWINDOW_H
